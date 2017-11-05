@@ -72,8 +72,10 @@ function sendEmail(email) {
   var mailOptions = {
     from: 'strandzolina60@gmail.com',
     to: email,
-    subject: 'Pao sam',
-    text: 'Uf boli me kuk, zovi Draganu!'
+    subject: 'Emergency',
+    text: "Im not felling well, pls help! " +
+          " My location is https://www.google.rs/maps/@" + gps.lat || '' +
+          "," + gps.long || '' + ",15.25z"
   };
 
   transporter.sendMail(mailOptions, function(error, info){
@@ -119,21 +121,23 @@ function getArduino() {
   return arduino;
 }
 
-function detectMotion(x, y, z) {
+function detectMotion(x, y, z, m) {
   var nx=x;
   var ny=y;
   var nz=z;
   var na=Math.sqrt(nx*nx+ny*ny+nz*nz);
-  if(na>1.5 || na<0.5){ // krece se
-    if(nx>1.5*startingPosition.x || nx<0.5*startingPosition.x &&
-    ny>1.5*startingPosition.y || nz<0.5*startingPosition.y &&
-    nz>1.5*startingPosition.z || nz<0.5*startingPosition.z)
-    // sta ako se kotrlja a ne moze da ustane, mozda je dovoljna magnituda
-    return true;
-  }
-  return false;
+  // if(na>1.5 || na<0.5){ // krece se
+  //   if(nx>1.5*startingPosition.x || nx<0.5*startingPosition.x &&
+  //   ny>1.5*startingPosition.y || nz<0.5*startingPosition.y &&
+  //   nz>1.5*startingPosition.z || nz<0.5*startingPosition.z)
+  //   // sta ako se kotrlja a ne moze da ustane, mozda je dovoljna magnituda
+  //   return true;
+  // }
+  // return false;
+  return (m>1.5 || m<0.5);
 }
-/**/function distanceGPS(lat1,lon1,lat0,lon0){
+
+function distanceGPS(lat1,lon1,lat0,lon0){
   // lat0 i lon0 su tipa koordinate gajbe, a lat1 i lon1 trenutne
   // moze da se posalje notifikacija ukoliko se udalji vise od X kilometara
   // (opcija u aplikaciji)
@@ -178,9 +182,8 @@ io.sockets.on('connection', function (client) {
   client.on('geo', function (data) {
     gps = data;
     console.log('GPS : ' + gps);
-
-    //var distg=distanceGPS(gps.lat, gps.long, gajba.lat, gajba.long);
-    //if (distg> zadata_Razdaljina) send_notification;
+    // var distg=distanceGPS(gps.lat, gps.long, gajba.lat, gajba.long);
+    // if (distg> zadata_Razdaljina) send_notification;
   });
 
   client.on('acc', function(data) {
@@ -188,23 +191,30 @@ io.sockets.on('connection', function (client) {
     var y = data.y;
     var z = data.z;
     var m = Math.sqrt(x*x + y*y + z*z);
-    if (detectMotion == true)
-      imOk=detectMotion(x, y, z);// ako je 1, verovatno je ustao
+    if (detectMotion == true) {
+      imOk=detectMotion(x, y, z, m);// ako je 1, verovatno je ustao
+      getCaretakers().forEach(function (caretaker) {
+        caretaker.emit('emergency_stop');
+      });
+      console.log('Im alive!');
+    }
     if (m > 4) {
       getArduino().emit('pd');
-      imOk = false;
       setTimeout(function () {
-        if (!imOk) {
-          emergencyCall();
-          detectMotion = true;
-          startingPosition = {
-            x: x,
-            y: y,
-            z: z
-          };
-          imOk = true;
-        }
-      }, 5000);
+        imOk = false;
+        setTimeout(function () {
+          if (!imOk) {
+            emergencyCall();
+            detectMotion = true;
+            startingPosition = {
+              x: x,
+              y: y,
+              z: z
+            };
+            imOk = true;
+          }
+        }, 5000);
+      }, 2000);
     }
   });
 });
